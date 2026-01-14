@@ -1,0 +1,46 @@
+pipeline {
+    agent any
+    options{
+        disableRestartFromStage()
+        timeout(time: 20, unit: 'MINUTES')
+        retry(3)
+    }
+    parameters{
+        string(name: 'BRANCH', defaultValue: 'main', description: 'Branch to build')
+        choice(name: 'CHOICES', choices: ['dev', 'qa', 'prod'], description: 'env to build')
+    }
+    stages{
+        stage("git clone"){
+            steps{
+                git branch: "${params.BRANCH}", url: "https://github.com/dockersamples/example-voting-app.git"
+            }
+        }
+        stage("Docker login and push"){
+            steps{
+                dir('vote'){
+                    script{
+                        withCredentials([usernamePassword(credentialsId: 'docker', 
+                                                          passwordVariable: 'DOCKER_PWD', 
+                                                          usernameVariable: 'DOCKER_USER')]){
+                                                              sh "echo ${DOCKER_PWD} | docker login -u ${DOCKER_USER} --password-stdin"
+                                                              sh """
+                                                                    docker build -t nilu4u/vote:${BUILD_NUMBER} .
+                                                                    docker push nilu4u/vote:${BUILD_NUMBER}
+                                                                """
+                                                              sh "docker logout"
+                                                          }
+                    }
+                }
+            }
+        }
+    }
+    // This section runs after all stages are finished
+    post {
+        always {
+            script {
+                // Deletes the local image to save space
+                sh "docker rmi nilu4u/vote:${BUILD_NUMBER} || true"
+            }
+        }
+    }
+}
